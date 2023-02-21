@@ -431,6 +431,11 @@ func (r *CloneReconcilerBase) createExpansionPod(pvc *corev1.PersistentVolumeCla
 		return nil, err
 	}
 
+	imagePullSecrets, err := cc.GetImagePullSecrets(r.client)
+	if err != nil {
+		return nil, err
+	}
+
 	workloadNodePlacement, err := cc.GetWorkloadNodePlacement(r.client)
 	if err != nil {
 		return nil, err
@@ -458,7 +463,8 @@ func (r *CloneReconcilerBase) createExpansionPod(pvc *corev1.PersistentVolumeCla
 					Args:            []string{"-c", "echo", "'hello cdi'"},
 				},
 			},
-			RestartPolicy: corev1.RestartPolicyOnFailure,
+			ImagePullSecrets: imagePullSecrets,
+			RestartPolicy:    corev1.RestartPolicyOnFailure,
 			Volumes: []corev1.Volume{
 				{
 					Name: cc.DataVolName,

@@ -111,6 +111,7 @@ type importerPodArgs struct {
 	pvc                     *corev1.PersistentVolumeClaim
 	scratchPvcName          *string
 	podResourceRequirements *corev1.ResourceRequirements
+	imagePullSecrets        []corev1.LocalObjectReference
 	workloadNodePlacement   *sdkapi.NodePlacement
 	vddkImageName           *string
 	priorityClassName       string
@@ -863,9 +864,12 @@ func createImportPodNameFromPvc(pvc *corev1.PersistentVolumeClaim) string {
 func createImporterPod(log logr.Logger, client client.Client, args *importerPodArgs, installerLabels map[string]string) (*corev1.Pod, error) {
 	var err error
 	args.podResourceRequirements, err = cc.GetDefaultPodResourceRequirements(client)
+
 	if err != nil {
 		return nil, err
 	}
+
+	args.imagePullSecrets = cdiv1.CDIConfig{}.Spec.ImagePullSecrets
 
 	args.workloadNodePlacement, err = cc.GetWorkloadNodePlacement(client)
 	if err != nil {
@@ -971,6 +975,7 @@ func makeNodeImporterPodSpec(args *importerPodArgs) *corev1.Pod {
 			Tolerations:       args.workloadNodePlacement.Tolerations,
 			Affinity:          args.workloadNodePlacement.Affinity,
 			PriorityClassName: args.priorityClassName,
+			ImagePullSecrets:  args.imagePullSecrets,
 		},
 	}
 
@@ -1003,7 +1008,7 @@ func makeNodeImporterPodSpec(args *importerPodArgs) *corev1.Pod {
 	args.podEnvVar.ep = "http://localhost:8100/disk.img"
 	args.podEnvVar.readyFile = "/shared/ready"
 	args.podEnvVar.doneFile = "/shared/done"
-	setImporterPodCommons(pod, args.podEnvVar, args.pvc, args.podResourceRequirements)
+	setImporterPodCommons(pod, args.podEnvVar, args.pvc, args.podResourceRequirements, args.imagePullSecrets)
 	pod.Spec.Containers[0].VolumeMounts = append(pod.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
 		MountPath: "/shared",
 		Name:      "shared-volume",
@@ -1088,7 +1093,7 @@ func makeImporterPodSpec(args *importerPodArgs) *corev1.Pod {
 		},
 	}
 
-	setImporterPodCommons(pod, args.podEnvVar, args.pvc, args.podResourceRequirements)
+	setImporterPodCommons(pod, args.podEnvVar, args.pvc, args.podResourceRequirements, args.imagePullSecrets)
 
 	if args.scratchPvcName != nil {
 		pod.Spec.Containers[0].VolumeMounts = append(pod.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
@@ -1162,12 +1167,13 @@ func makeImporterPodSpec(args *importerPodArgs) *corev1.Pod {
 	return pod
 }
 
-func setImporterPodCommons(pod *corev1.Pod, podEnvVar *importPodEnvVar, pvc *corev1.PersistentVolumeClaim, podResourceRequirements *corev1.ResourceRequirements) {
+func setImporterPodCommons(pod *corev1.Pod, podEnvVar *importPodEnvVar, pvc *corev1.PersistentVolumeClaim, podResourceRequirements *corev1.ResourceRequirements, imagePullSecrets []corev1.LocalObjectReference) {
 	if podResourceRequirements != nil {
 		for i := range pod.Spec.Containers {
 			pod.Spec.Containers[i].Resources = *podResourceRequirements
 		}
 	}
+	pod.Spec.ImagePullSecrets = imagePullSecrets
 
 	ownerUID := pvc.UID
 	if len(pvc.OwnerReferences) == 1 {
